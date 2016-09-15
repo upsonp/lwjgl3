@@ -4,7 +4,6 @@
  */
 package org.lwjgl.demo.system.jawt;
 
-import org.lwjgl.BufferUtils;
 import org.lwjgl.system.Platform;
 import org.lwjgl.system.jawt.JAWT;
 import org.lwjgl.system.macosx.ObjCRuntime;
@@ -29,7 +28,7 @@ final class EmbeddedFrameUtil {
 	private static final JAWT awt;
 
 	static {
-		Pattern p = Pattern.compile("^(?:1[.])?([1-9][0-9]*)[.]");
+		Pattern p = Pattern.compile("^(?:1[.])?([1-9][0-9]*)[.-]");
 		Matcher m = p.matcher(System.getProperty("java.version"));
 
 		if ( !m.find() )
@@ -46,48 +45,46 @@ final class EmbeddedFrameUtil {
 	private EmbeddedFrameUtil() {
 	}
 
+	private static String getEmbeddedFrameImpl() {
+		switch ( Platform.get() ) {
+			case LINUX:
+				return "sun.awt.X11.XEmbeddedFrame";
+			case MACOSX:
+				return "sun.lwawt.macosx.CViewEmbeddedFrame";
+			case WINDOWS:
+				return "sun.awt.windows.WEmbeddedFrame";
+			default:
+				throw new IllegalStateException();
+		}
+	}
+
+	private static long getEmbeddedFrameHandle(long window) {
+		switch ( Platform.get() ) {
+			case LINUX:
+				return glfwGetX11Window(window);
+			case MACOSX:
+				long objc_msgSend = ObjCRuntime.getLibrary().getFunctionAddress("objc_msgSend");
+				return invokePPP(objc_msgSend, glfwGetCocoaWindow(window), sel_getUid("contentView"));
+			case WINDOWS:
+				return glfwGetWin32Window(window);
+			default:
+				throw new IllegalStateException();
+		}
+	}
+
 	static Frame embeddedFrameCreate(long window) {
 		if ( JAVA_VERSION < 9 ) {
-			String embeddedFrameImpl;
-			switch ( Platform.get() ) {
-				case LINUX:
-					embeddedFrameImpl = "sun.awt.X11.XEmbeddedFrame";
-					break;
-				case MACOSX:
-					embeddedFrameImpl = "sun.lwawt.macosx.CViewEmbeddedFrame";
-					break;
-				case WINDOWS:
-					embeddedFrameImpl = "sun.awt.windows.WEmbeddedFrame";
-					break;
-				default:
-					throw new IllegalStateException();
-			}
-
 			try {
-				@SuppressWarnings("unchecked") Class<? extends Frame> EmdeddedFrame = (Class<? extends Frame>)Class.forName(embeddedFrameImpl);
+				@SuppressWarnings("unchecked")
+				Class<? extends Frame> EmdeddedFrame = (Class<? extends Frame>)Class.forName(getEmbeddedFrameImpl());
 				Constructor<? extends Frame> c = EmdeddedFrame.getConstructor(long.class);
 
-				switch ( Platform.get() ) {
-					case LINUX:
-						return c.newInstance(glfwGetX11Window(window));
-					case MACOSX:
-						long cocoaWindow = glfwGetCocoaWindow(window);
-
-						long objc_msgSend = ObjCRuntime.getLibrary().getFunctionAddress("objc_msgSend");
-						long contentView = invokePPP(objc_msgSend, cocoaWindow, sel_getUid("contentView"));
-
-						return c.newInstance(contentView);
-					case WINDOWS:
-						return c.newInstance(glfwGetWin32Window(window));
-					default:
-						throw new IllegalStateException();
-				}
+				return c.newInstance(getEmbeddedFrameHandle(window));
 			} catch (Exception e) {
 				throw new RuntimeException(e);
 			}
 		} else {
-			// TODO: implement
-			return JAWT_CreateEmbeddedFrame(awt.CreateEmbeddedFrame(), BufferUtils.createByteBuffer(0));
+			return nJAWT_CreateEmbeddedFrame(awt.CreateEmbeddedFrame(), getEmbeddedFrameHandle(window));
 		}
 	}
 

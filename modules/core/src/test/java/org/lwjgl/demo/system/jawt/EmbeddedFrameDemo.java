@@ -10,6 +10,7 @@ import org.lwjgl.opengl.GL;
 
 import java.awt.*;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import javax.swing.*;
 
 import static org.lwjgl.demo.system.jawt.EmbeddedFrameUtil.*;
@@ -24,6 +25,8 @@ public final class EmbeddedFrameDemo {
 	}
 
 	public static void main(String[] args) {
+		Toolkit.getDefaultToolkit();
+
 		GLFWErrorCallback.createPrint().set();
 		if ( !glfwInit() )
 			throw new IllegalStateException("Unable to initialize glfw");
@@ -53,9 +56,17 @@ public final class EmbeddedFrameDemo {
 
 		JPanel pane = new JPanel();
 		pane.setLayout(new BorderLayout());
-		pane.add(new JButton("JButton"), BorderLayout.CENTER);
+		JButton btn = new JButton("JButton");
+		btn.addActionListener(System.out::println);
+		pane.add(btn, BorderLayout.CENTER);
 		ef.add(pane);
-		EventQueue.invokeLater(() -> embeddedFrameSetBounds(ef, 200, 268, 100, 32));
+		EventQueue.invokeLater(() -> {
+			ef.addNotify();
+
+			embeddedFrameSetBounds(ef, 200, 268, 100, 32);
+			ef.invalidate();
+			ef.setVisible(true);
+		});
 
 		glfwSetKeyCallback(window, (windowHnd, key, scancode, action, mods) -> {
 			if ( action != GLFW_RELEASE )
@@ -70,7 +81,10 @@ public final class EmbeddedFrameDemo {
 
 		glfwSetWindowSizeCallback(window, (windowHnd, width, height) -> {
 			glViewport(0, 0, width, height);
-			EventQueue.invokeLater(() -> embeddedFrameSetBounds(ef, width - 100, height - 32, 100, 32));
+			EventQueue.invokeLater(() -> {
+				embeddedFrameSetBounds(ef, width - 100, height - 32, 100, 32);
+				ef.invalidate();
+			});
 		});
 
 		glfwSetWindowRefreshCallback(window, windowHnd -> {
@@ -90,14 +104,15 @@ public final class EmbeddedFrameDemo {
 
 		CountDownLatch latch = new CountDownLatch(1);
 
-		glfwFocusWindow(window); // deadlocks without this
 		EventQueue.invokeLater(() -> {
 			ef.dispose();
 			latch.countDown();
 		});
 
 		try {
-			latch.await();
+			// Wait for the frame to be disposed
+			while ( !latch.await(10, TimeUnit.MILLISECONDS) )
+				glfwPollEvents();
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
